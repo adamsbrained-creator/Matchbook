@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Matchbook" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#FF0B0B0D</item>
+        <item name="android:windowSplashScreenBackground">#FF0B1510</item>
+    </style>
+</resources>
