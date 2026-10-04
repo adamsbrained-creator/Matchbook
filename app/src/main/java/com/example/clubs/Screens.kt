@@ -90,7 +90,10 @@ fun NavBar(vm: AppVM, land: Boolean) {
     val u = LocalU.current
     val float = u.s.navs == "float"
     val labels = u.s.lbl == "on"
-    val shape = RoundedCornerShape(u.r + if (land) 10.dp else 14.dp)
+    val outerR = u.r + if (land) 10.dp else 14.dp
+    val shape = RoundedCornerShape(outerR)
+    // Float bar has 5dp inner padding, so the selected pill's radius = outer radius - 5dp (concentric corners)
+    val pill = if (float) RoundedCornerShape(maxOf(0.dp, outerR - 5.dp)) else u.rs(4)
     val items = listOf("clubs" to "shield", "leagues" to "trophy", "add" to "plus", "stats" to "bars")
     val base = if (land) Modifier.fillMaxHeight() else Modifier.fillMaxWidth()
     val mod = if (float) {
@@ -108,7 +111,7 @@ fun NavBar(vm: AppVM, land: Boolean) {
         val on = vm.tab == k
         val col = if (on) u.acc else u.mu
         Column(
-            m.clip(u.rs(4)).background(if (on) lerp(u.bg, u.acc, .13f) else Color.Transparent).clickable { vm.selectTab(k) }
+            m.clip(pill).background(if (on) lerp(u.bg, u.acc, .13f) else Color.Transparent).clickable { vm.selectTab(k) }
                 .padding(horizontal = if (labels) 2.dp else 14.dp, vertical = if (labels) 8.dp else 12.dp),
             verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -403,135 +406,4 @@ fun LeagueForm(vm: AppVM, d: Draft) {
         Upload("Logo", d, "logo")
         Upload("Banner", d, "banner")
         ColorField("League color", d["color"]) { d["color"] = it }
-        FRow { Fld("Points per win", d["pw"], { d["pw"] = it }, Modifier.weight(1f), number = true); Fld("Points per draw", d["pd"], { d["pd"] = it }, Modifier.weight(1f), number = true) }
-        FRow { Fld("Promotion spots", d["promo"], { d["promo"] = it }, Modifier.weight(1f), number = true); Fld("Relegation spots", d["rel"], { d["rel"] = it }, Modifier.weight(1f), number = true) }
-    }
-    Spacer(Modifier.height(14.dp))
-    SaveBtn("Save league") { vm.saveLeague(d) }
-    if (ed) Btn("Delete league and clubs", "red") { vm.deleteLeague(d.eid!!) }
-}
-
-@Composable
-fun ClubForm(vm: AppVM, d: Draft) {
-    val ed = d.eid != null
-    BackBtn(vm.back?.label ?: "Back") { vm.goBack() }
-    TopBar(if (ed) "Edit club" else "New club", false)
-    Column(Modifier.bd()) {
-        Fld("Club name", d["name"], { d["name"] = it }, ph = "Metalist")
-        FRow { Fld("Short name", d["short"], { d["short"] = it }, Modifier.weight(1f), ph = "ME"); Fld("Nickname", d["nick"], { d["nick"] = it }, Modifier.weight(1f)) }
-        LeagueSelect(d, vm.leagues)
-        FRow { Fld("City", d["city"], { d["city"] = it }, Modifier.weight(1f)); Fld("Founded", d["founded"], { d["founded"] = it }, Modifier.weight(1f), number = true, ph = "1925") }
-        FRow { Fld("Stadium", d["stadium"], { d["stadium"] = it }, Modifier.weight(1f)); Fld("Capacity", d["cap"], { d["cap"] = it }, Modifier.weight(1f), number = true) }
-        FRow { Fld("Manager", d["mgr"], { d["mgr"] = it }, Modifier.weight(1f)); Fld("Chairman", d["chair"], { d["chair"] = it }, Modifier.weight(1f)) }
-        Upload("Crest image (optional)", d, "logo")
-        FRow { ColorField("Main color", d["color"], Modifier.weight(1f)) { d["color"] = it }; ColorField("Second color", d["c2"], Modifier.weight(1f)) { d["c2"] = it } }
-        FRow(10) { for ((k, t) in listOf("w" to "Won", "d" to "Drawn", "l" to "Lost")) Fld(t, d[k], { d[k] = it }, Modifier.weight(1f), number = true) }
-        FRow(10) { for ((k, t) in listOf("gf" to "Goals for", "ga" to "Against", "titles" to "Titles")) Fld(t, d[k], { d[k] = it }, Modifier.weight(1f), number = true) }
-        Fld("Honours", d["hon"], { d["hon"] = it }, ph = "One per line", multi = true)
-        Fld("About", d["info"], { d["info"] = it }, multi = true)
-    }
-    Spacer(Modifier.height(14.dp))
-    SaveBtn("Save club") { vm.saveClub(d) }
-    if (ed) Btn("Delete club", "red") { vm.deleteClub(d.eid!!) }
-}
-
-// =============================================================== settings
-@Composable
-private fun Seg(vm: AppVM, label: String, key: String, opts: List<Pair<String, String>>) {
-    val u = LocalU.current
-    val cur = u.s.at(key)
-    Lbl(label)
-    Row(Modifier.fillMaxWidth().clip(u.rs(4)).background(u.sft).padding(3.dp)) {
-        opts.forEach { (v, t) ->
-            val on = v == cur
-            Box(Modifier.weight(1f).clip(u.rs(7)).background(if (on) u.ink else Color.Transparent).clickable { vm.set(key, v) }
-                .padding(horizontal = 3.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
-                Tx(t, 13f, 500, if (on) u.bg else u.mu)
-            }
-        }
-    }
-    Spacer(Modifier.height(14.dp))
-}
-
-@Composable
-private fun Rg(label: String, v: Int, max: Int, onV: (Int) -> Unit) {
-    val u = LocalU.current
-    KvRow(true) { Tx(label, 14 * u.fs, c = u.mu); Tx("$v", 14 * u.fs, 700) }
-    Slider(v.toFloat(), { onV(it.roundToInt()) }, valueRange = 0f..max.toFloat(),
-        colors = SliderDefaults.colors(thumbColor = u.acc, activeTrackColor = u.acc, inactiveTrackColor = u.ln))
-    Spacer(Modifier.height(8.dp))
-}
-
-@Composable
-private fun Sec(t: String, content: @Composable ColumnScope.() -> Unit) {
-    H3(t)
-    Panel(side = 0.dp, h = 16.dp, content = content)
-}
-
-@Composable
-private fun Toggles(items: List<Pair<String, String>>, on: (String) -> Boolean, flip: (String) -> Unit) {
-    val u = LocalU.current
-    items.forEachIndexed { i, (k, t) ->
-        KvRow(i == items.lastIndex) { Tx(t, 14 * u.fs, c = u.mu); Toggle(on(k)) { flip(k) } }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun SettingsScreen(vm: AppVM) {
-    val u = LocalU.current
-    val s = u.s
-    var picker by remember { mutableStateOf(false) }
-    val swatches = listOf("#2da678", "#2f6bff", "#e11d48", "#f59e0b", "#7c3aed", "#111111")
-    BackBtn(vm.back?.label ?: "Back") { vm.goBack() }
-    TopBar("Customise", false)
-    Column(Modifier.bd()) {
-        Panel(side = 0.dp, v = 14.dp, h = 16.dp) { vm.clubs.firstOrNull()?.let { ClubRow(vm, it, plain = true) } }
-        FlowRow(Modifier.padding(bottom = 18.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            PRESETS.forEach { p -> Chip(p.replaceFirstChar { it.uppercase() }, false) { vm.applyPreset(p) } }
-        }
-        Sec("Colour") {
-            Seg(vm, "Theme", "theme", listOf("auto" to "Auto", "light" to "Light", "dark" to "Dark"))
-            Lbl("Accent")
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                swatches.forEach { c ->
-                    Box(Modifier.size(36.dp).then(if (s.acc.equals(c, true)) Modifier.border(2.dp, u.ink, CircleShape) else Modifier)
-                        .padding(2.dp).clip(CircleShape).background(hex(c)).clickable { vm.set("acc", c) })
-                }
-                Box(Modifier.size(48.dp, 32.dp).clip(u.rs(10)).border(1.dp, u.ln, u.rs(10)).background(hex(s.acc)).clickable { picker = true })
-            }
-            Spacer(Modifier.height(14.dp))
-            Seg(vm, "Background tint", "tint", listOf("neutral" to "Neutral", "warm" to "Warm", "cool" to "Cool", "accent" to "Accent"))
-        }
-        Sec("Shape") {
-            Rg("Corner radius", s.r, 32) { v -> vm.update { it.copy(r = v) } }
-            Seg(vm, "Crest shape", "c", listOf("circle" to "Circle", "square" to "Soft", "shield" to "Shield", "hex" to "Hex"))
-            Rg("Crest ring", s.ring, 14) { v -> vm.update { it.copy(ring = v) } }
-        }
-        Sec("Type") {
-            Seg(vm, "Typeface", "f", listOf("sans" to "Roboto", "rounded" to "Rounded", "serif" to "Serif", "mono" to "Mono"))
-            Seg(vm, "Text size", "fs", listOf("s" to "Small", "m" to "Medium", "l" to "Large"))
-            Seg(vm, "Title weight", "tw", listOf("light" to "Light", "regular" to "Regular", "bold" to "Bold"))
-        }
-        Sec("Layout") {
-            Seg(vm, "Spacing", "d", listOf("cozy" to "Cozy", "compact" to "Compact"))
-            Seg(vm, "Navigation", "navs", listOf("float" to "Floating", "bar" to "Bar"))
-            Seg(vm, "Nav labels", "lbl", listOf("on" to "Show", "off" to "Hide"))
-            Seg(vm, "League list", "lay", listOf("cards" to "Cards", "list" to "List"))
-            Seg(vm, "Club list", "cl", listOf("list" to "List", "grid" to "Grid"))
-            Seg(vm, "Club names", "nm", listOf("full" to "Full", "short" to "Short"))
-        }
-        Sec("Table columns") {
-            Toggles(listOf("w" to "Wins", "d" to "Draws", "l" to "Losses", "gd" to "Goal difference"), { it in s.cols }) { vm.toggleCol(it) }
-        }
-        Sec("Club page") {
-            Toggles(
-                listOf("stadium" to "Stadium", "colours" to "Colours", "titles" to "League titles", "points" to "Points", "nick" to "Nickname",
-                    "mgr" to "Manager", "chair" to "Chairman", "cap" to "Capacity", "played" to "Played", "rec" to "Won / drawn / lost",
-                    "goals" to "Goals", "hon" to "Honours", "about" to "About"),
-                { it in s.fields }) { vm.toggleField(it) }
-        }
-        Btn("Reset to defaults", side = 0.dp) { vm.reset() }
-    }
-    if (picker) ColorDialog(s.acc, { vm.set("acc", it); picker = false }, { picker = false })
-}
+        FRow { Fld("Points per win", d["pw"], { d["pw"] = it }, Modifier.weight(1f), number = true); Fld("Points per draw", d["pd"], { d["pd"] = it }, Modifier.weight(1f), number 
