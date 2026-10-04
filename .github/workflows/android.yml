@@ -31,9 +31,12 @@ jobs:
       - name: Build Debug APK
         run: gradle assembleDebug --stacktrace
 
+      - name: Name the APK
+        run: mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Matchbook.apk
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: clubs-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: matchbook-apk
+          path: app/build/outputs/apk/debug/Matchbook.apk
           if-no-files-found: error
