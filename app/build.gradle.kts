@@ -5,10 +5,10 @@ plugins {
 }
 
 android {
-    namespace = "com.example.clubs"
+    namespace = "com.matchbook.app"
     compileSdk = 35
     defaultConfig {
-        applicationId = "com.example.clubs"
+        applicationId = "com.matchbook.app"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

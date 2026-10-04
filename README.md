@@ -1,10 +1,12 @@
-# Clubs (Jetpack Compose)
+# Matchbook
 
-Port of "Clubs – app mockup v7".
+Track your clubs, leagues, tables and stats. Jetpack Compose app, port of "Clubs - app mockup v8".
 
-Open this folder in Android Studio (Ladybug or newer), let Gradle sync, press Run.
+Open in Android Studio, let Gradle sync, press Run. GitHub Actions builds the APK via .github/workflows/android.yml
+(artifact: matchbook-apk).
 
-- Portrait: bottom nav. Landscape: side rail + list pane + detail pane (as in the mockup).
-- Data and customisation settings persist on the device.
-- "Rounded" typeface: drop nunito.ttf into app/src/main/res/font and change
-  `RoundedFont` in Ui.kt to `FontFamily(Font(R.font.nunito))`.
+Optional fonts (drop into app/src/main/res/font, lowercase names, picked up automatically):
+anton.ttf (Condensed headings), inter.ttf (body), nunito.ttf (Rounded).
+Without them the app falls back to the system condensed / default / sans fonts.
+
+App icon: adaptive vector icon (res/drawable/ic_launcher_*.xml), with a monochrome layer for Android 13+ themed icons.
