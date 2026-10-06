@@ -31,9 +31,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # Accepts SDK licenses and installs missing platforms (compileSdk 35)
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # The runner image already ships the Android SDK (platform 35 included).
+      # Just make sure the licenses are accepted; never fail the job on this step.
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses > /dev/null 2>&1 || true
 
       # No gradlew in the repo, so use a pinned Gradle (AGP 8.7.3 needs 8.9+). Caching is built in.
       - name: Set up Gradle
