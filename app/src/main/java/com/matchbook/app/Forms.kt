@@ -218,3 +218,23 @@ fun DateTimeField(at: Long, onChange: (Long) -> Unit) {
         }
     }
 }
+
+@Composable
+fun PlayerForm(vm: AppVM, d: Draft) {
+    val ed = d.eid != null
+    val club = vm.cl(d["cid"])
+    TopRow(vm.backLabel, { vm.goBack() })
+    Tp(if (ed) "Edit player" else "New player", club?.name ?: "Squad")
+    Column(Modifier.bd(top = 18.dp, bottom = 20.dp)) {
+        FormCard("Player") {
+            Fld("Name", d["name"], { d["name"] = it }, ph = "Player name")
+            FRow {
+                Fld("Number", d["num"], { d["num"] = it }, Modifier.weight(1f), number = true)
+                DropSelect("Position", POS_NAMES.firstOrNull { it.first == d["pos"] }?.second ?: "", POS_NAMES, { d["pos"] = it }, Modifier.weight(1.4f))
+            }
+            Upload("Render (picture or cut-out)", d, "img")
+        }
+        if (ed) DeleteBtn("Delete player", 0.dp) { vm.deletePlayer(d.eid!!) }
+        Spacer(Modifier.height(100.dp))
+    }
+}

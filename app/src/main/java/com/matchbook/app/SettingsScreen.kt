@@ -28,17 +28,7 @@ private fun Seg(vm: AppVM, label: String, key: String, opts: List<Pair<String, S
     val cur = u.s.at(key)
     Lbl(label)
     if (opts.size <= 3) {
-        val sh = u.rs(12)
-        Row(Modifier.fillMaxWidth().clip(sh).background(u.fieldFill).border(1.dp, u.glassEdge, sh).padding(3.dp)) {
-            opts.forEach { (v, t) ->
-                val on = v == cur
-                Box(
-                    Modifier.weight(1f).clip(u.rs(15)).background(if (on) u.acc else Color.Transparent)
-                        .clickable { vm.set(key, v) }.padding(horizontal = 3.dp, vertical = 11.dp),
-                    contentAlignment = Alignment.Center,
-                ) { Tx(t, 13 * u.fs, if (on) 800 else 600, if (on) u.on else u.mu, maxLines = 1) }
-            }
-        }
+        SegRow(opts, cur) { vm.set(key, it) }
     } else {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             opts.forEach { (v, t) -> Chip(t, v == cur) { vm.set(key, v) } }
@@ -82,13 +72,11 @@ private fun Toggles(items: List<Pair<String, String>>, on: (String) -> Boolean, 
 private val ACCENTS = listOf("#c8f169", "#ffffff", "#ff8a3d", "#38bdf8", "#f472b6", "#a78bfa", "#34d399")
 
 private val WHATS_NEW = listOf(
-    "Backup and restore, with undo",
-    "Glass design with a floating navigation bar",
-    "Fixtures, a Next fixture card and Compare",
-    "Separate league table pages with several views",
-    "Promotion and relegation links between leagues",
-    "More layouts, page blocks and settings",
-    "New icon and launch screen",
+    "Squad, lineup builder and tactics mode",
+    "Coral interface as an alternative look",
+    "Eleven extra navigation bars",
+    "Pitch app icon and a refreshed icon set",
+    "Backups now include squads and lineups",
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -105,12 +93,13 @@ fun SettingsScreen(vm: AppVM) {
         if (uri != null) vm.readBackup(uri)
     }
 
-    Tp("Settings", "Make it yours")
+    Tp("Settings", "Make it yours", lead = true)
     HChips(PRESETS.map { it to it }, null) { vm.applyPreset(it) }
     Column(Modifier.bd(top = 14.dp)) {
         ClubCard(vm, pc, "list", Modifier.fillMaxWidth().padding(bottom = 4.dp))
 
         Sec("Appearance") {
+            Seg(vm, "Interface style", "ui", listOf("glass" to "Glass (2.0)", "coral" to "Coral"))
             Seg(vm, "Theme", "theme", listOf("auto" to "Auto", "dark" to "Dark", "light" to "Light"))
             Lbl("Accent")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -126,14 +115,15 @@ fun SettingsScreen(vm: AppVM) {
         }
 
         Sec("Type") {
-            Seg(vm, "Typeface", "f", listOf("manrope" to "Manrope", "condensed" to "Condensed", "rounded" to "Rounded", "serif" to "Serif", "mono" to "Mono"))
+            Seg(vm, "Typeface", "f", listOf("manrope" to "Manrope", "outfit" to "Outfit", "condensed" to "Condensed", "rounded" to "Rounded", "serif" to "Serif", "mono" to "Mono"))
             Seg(vm, "Text size", "fs", listOf("s" to "Small", "m" to "Medium", "l" to "Large"))
             Seg(vm, "Spacing", "d", listOf("cozy" to "Cozy", "compact" to "Compact"))
         }
 
         Sec("Navigation") {
-            Seg(vm, "Style", "navs", listOf("float" to "Floating", "dock" to "Docked"))
-            Seg(vm, "Labels", "lbl", listOf("off" to "Icons only", "on" to "With labels"))
+            Tx("Glass interface only. Coral uses its menu button and a floating action button.", 12 * u.fs, 500, u.mu, Modifier.padding(top = 8.dp))
+            Seg(vm, "Style", "navs", NAV_CHOICES)
+            if (s.navs == "float") Seg(vm, "Labels (floating bar)", "lbl", listOf("off" to "Icons only", "on" to "With labels"))
         }
 
         Sec("Pages and grids") {
@@ -197,7 +187,7 @@ fun SettingsScreen(vm: AppVM) {
         H3("About")
         Glass(Modifier.fillMaxWidth().padding(bottom = 14.dp), pad = PaddingValues(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                BallMark(Modifier.size(64.dp))
+                PitchMark(Modifier.size(64.dp))
                 Column {
                     Hd("Matchbook", 24f)
                     Tx("Version ${vm.appVersion()}", 14 * u.fs, 700)
@@ -205,7 +195,7 @@ fun SettingsScreen(vm: AppVM) {
                 }
             }
             Spacer(Modifier.height(14.dp))
-            Tx("What's new in 2.0", 13 * u.fs, 800)
+            Tx("What's new in 2.5", 13 * u.fs, 800)
             WHATS_NEW.forEach { line ->
                 Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(6.dp).clip(CircleShape).background(u.acc))

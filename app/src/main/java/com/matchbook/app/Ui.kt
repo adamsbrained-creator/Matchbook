@@ -85,14 +85,19 @@ fun parseHex(s: String): Color? {
 // ================================================================ tokens
 class U(
     val s: Settings, val dark: Boolean,
-    manrope: FontFamily, anton: FontFamily, inter: FontFamily, nunito: FontFamily,
+    manrope: FontFamily, anton: FontFamily, inter: FontFamily, nunito: FontFamily, outfit: FontFamily,
 ) {
-    // dark: near-black with glass; light: cool tinted background with frosted white glass
-    val bg = if (dark) Color(0xFF0B0C0F) else Color(0xFFE9EDF5)
-    val ink = if (dark) Color(0xFFF4F6F8) else Color(0xFF12151B)
-    val mu = if (dark) Color(0xFFB4BCC6) else Color(0xFF566072)
-    val ln = if (dark) Color.White.copy(alpha = .08f) else Color(0xFF0F172A).copy(alpha = .08f)
-    val sf = if (dark) Color(0xFF181A20) else Color.White
+    /** Coral look (2.5): flat white cards on a soft grey page, black primary actions, coral highlights. */
+    val coral = s.ui == "coral"
+    // glass: near-black with glass (dark) or cool tinted background with frosted white glass (light)
+    val bg = if (coral) (if (dark) Color(0xFF0A0A0A) else Color(0xFFF3F3F3)) else (if (dark) Color(0xFF0B0C0F) else Color(0xFFE9EDF5))
+    val ink = if (coral) (if (dark) Color(0xFFF4F4F4) else Color(0xFF1B1B1B)) else (if (dark) Color(0xFFF4F6F8) else Color(0xFF12151B))
+    val mu = if (coral) (if (dark) Color(0xFFA3A3A3) else Color(0xFF6B6B6B)) else (if (dark) Color(0xFFB4BCC6) else Color(0xFF566072))
+    val ln = if (coral) (if (dark) Color.White.copy(alpha = .07f) else Color.Black.copy(alpha = .06f))
+        else (if (dark) Color.White.copy(alpha = .08f) else Color(0xFF0F172A).copy(alpha = .08f))
+    val sf = if (coral) (if (dark) Color(0xFF161616) else Color.White) else (if (dark) Color(0xFF181A20) else Color.White)
+    /** Track behind segmented controls (Coral). */
+    val track = if (dark) Color(0xFF1F1F1F) else Color(0xFFECECEE)
     val glassFill = if (dark) Color(0xFF1A1C22).copy(alpha = .72f) else Color.White.copy(alpha = .70f)
     val glassSheen = if (dark) Color.White.copy(alpha = .05f) else Color.White.copy(alpha = .55f)
     val glassTop = if (dark) Color.White.copy(alpha = .15f) else Color.White.copy(alpha = .95f)
@@ -100,7 +105,7 @@ class U(
     val outline = if (dark) Color.White.copy(alpha = .22f) else Color(0xFF0F172A).copy(alpha = .22f)
     val shadowC = Color(0xFF1E293B).copy(alpha = .16f)
     val navFill = if (dark) Color(0xFF16181D).copy(alpha = .88f) else Color.White.copy(alpha = .86f)
-    val fieldFill = if (dark) Color.White.copy(alpha = .06f) else Color.White.copy(alpha = .78f)
+    val fieldFill = if (coral) (if (dark) Color.White.copy(alpha = .06f) else Color(0xFFF3F3F3)) else (if (dark) Color.White.copy(alpha = .06f) else Color.White.copy(alpha = .78f))
     val red = Color(0xFFFF5A5F)
     val acc: Color = hex(s.acc).let { a ->
         if (!dark && lum(a) > 190) {
@@ -109,13 +114,24 @@ class U(
         } else a
     }
     val on = if (lum(acc) > 150) InkDark else Color.White
+    /** Fill and text colour of primary buttons, selected chips and switches: accent in Glass, black/white in Coral. */
+    val pri: Color = if (coral) ink else acc
+    val onPri: Color = if (coral) bg else on
     val r = s.r.dp
     val ring = s.ring.dp
     val fs = when (s.fs) { "s" -> .92f; "l" -> 1.12f; else -> 1f }
     val pad = if (s.d == "compact") 8.dp else 14.dp
     val cond = s.f == "condensed"
-    val fb: FontFamily = when (s.f) { "condensed" -> inter; "rounded" -> nunito; "serif" -> FontFamily.Serif; "mono" -> FontFamily.Monospace; else -> manrope }
-    val fd: FontFamily = when (s.f) { "condensed" -> anton; "rounded" -> nunito; "serif" -> FontFamily.Serif; "mono" -> FontFamily.Monospace; else -> manrope }
+    val fb: FontFamily = when (s.f) {
+        "condensed" -> inter; "rounded" -> nunito; "serif" -> FontFamily.Serif; "mono" -> FontFamily.Monospace
+        "outfit" -> outfit; else -> manrope
+    }
+    val fd: FontFamily = when (s.f) {
+        "condensed" -> anton; "rounded" -> nunito; "serif" -> FontFamily.Serif; "mono" -> FontFamily.Monospace
+        "outfit" -> outfit; else -> manrope
+    }
+    /** Coral uses lighter weights than Glass. */
+    fun wt(w: Int): Int = if (!coral) w else when { w >= 800 -> 600; w >= 600 -> 500; else -> w }
     val shape = RoundedCornerShape(r)
     fun rs(d: Int) = RoundedCornerShape(maxOf(0.dp, r - d.dp))
 
@@ -127,6 +143,7 @@ class U(
 
     /** Decide a light or dark header foreground from the colour in the middle of the glow. */
     fun hdrFor(c: Color): Hdr {
+        if (coral) return Hdr(dark, if (dark) Color(0xFFF4F4F4) else Color(0xFF1B1B1B), sf, Color.Transparent)
         val g = glow(c)
         var m = lerp(g[1], g[2], .66f)
         if (s.g == "soft") m = m.compositeOver(bg)
@@ -143,11 +160,12 @@ class U(
     }
 }
 
-class Hdr(val light: Boolean) {
-    val fg = if (light) Color.White else InkDark
-    val chip = if (light) Color.White.copy(alpha = .16f) else Color.Black.copy(alpha = .08f)
-    val chipEdge = if (light) Color.White.copy(alpha = .22f) else Color.Black.copy(alpha = .10f)
-}
+class Hdr(
+    val light: Boolean,
+    val fg: Color = if (light) Color.White else InkDark,
+    val chip: Color = if (light) Color.White.copy(alpha = .16f) else Color.Black.copy(alpha = .08f),
+    val chipEdge: Color = if (light) Color.White.copy(alpha = .22f) else Color.Black.copy(alpha = .10f),
+)
 
 val LocalU = staticCompositionLocalOf<U> { error("U not provided") }
 val LocalHdr = compositionLocalOf { Hdr(true) }
@@ -160,7 +178,7 @@ fun Tx(
 ) {
     val u = LocalU.current
     Text(
-        t, modifier, color = if (c == Color.Unspecified) u.ink else c, fontSize = size.sp, fontWeight = FontWeight(w),
+        t, modifier, color = if (c == Color.Unspecified) u.ink else c, fontSize = size.sp, fontWeight = FontWeight(u.wt(w)),
         fontFamily = u.fb, textAlign = align, maxLines = maxLines, overflow = TextOverflow.Ellipsis,
         lineHeight = if (lh > 0f) lh.sp else TextUnit.Unspecified,
     )
@@ -170,7 +188,7 @@ fun Tx(
 @Composable
 fun Hd(t: String, size: Float, c: Color = Color.Unspecified, modifier: Modifier = Modifier, align: TextAlign? = null, w: Int = -1, maxLines: Int = Int.MAX_VALUE) {
     val u = LocalU.current
-    val weight = if (w > 0) w else if (u.cond) 400 else 800
+    val weight = if (w > 0) u.wt(w) else if (u.cond) 400 else if (u.coral) 500 else 800
     Text(
         t, modifier, color = if (c == Color.Unspecified) u.ink else c, fontSize = size.sp, fontWeight = FontWeight(weight),
         fontFamily = u.fd, textAlign = align, lineHeight = (size * 1.12f).sp,
@@ -179,23 +197,35 @@ fun Hd(t: String, size: Float, c: Color = Color.Unspecified, modifier: Modifier 
 }
 
 // ================================================================ icons
+// Icon set (24 x 24 grid, drawn as round-capped strokes). New in 2.5: pitch, users, route, menu, grid, list, more, chevrons, swap, trash.
 private val ICO = mapOf(
     "shield" to "M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z",
     "trophy" to "M8 4h8v5a4 4 0 0 1-8 0zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8",
     "plus" to "M12 5v14M5 12h14",
-    "bars" to "M6 20v-9M12 20V5M18 20v-6",
-    "search" to "M20 20l-4-4",
+    "bars" to "M5 20v-5M10 20V8M15 20V4M20 20v-9",
+    "search" to "M16 16l4.5 4.5",
     "close" to "M6 6l12 12M18 6L6 18",
     "back" to "M15 5l-7 7 7 7",
     "chev" to "M9 5l7 7-7 7",
-    "edit" to "M4 20h4L19 9l-4-4L4 16z",
+    "chevd" to "M6 9l6 6 6-6",
+    "chevu" to "M6 15l6-6 6 6",
+    "edit" to "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
     "compare" to "M7 4v16M17 4v16M3 8h8M13 16h8",
-    "cal" to "M5 6h14v14H5zM5 10h14M9 3v4M15 3v4",
+    "cal" to "M7 5h10a3 3 0 0 1 3 3v9a3 3 0 0 1 -3 3h-10a3 3 0 0 1 -3 -3v-9a3 3 0 0 1 3 -3zM4 10h16M9 3v4M15 3v4",
     "up" to "M12 19V6M6 12l6-6 6 6",
     "down" to "M12 5v13M6 12l6 6 6-6",
     "save" to "M12 4v11M7 10l5 5 5-5M5 20h14",
     "load" to "M12 16V5M7 10l5-5 5 5M5 20h14",
     "check" to "M5 12l5 5 9-10",
+    "menu" to "M4 7h16M4 12h16M4 17h10",
+    "more" to "M6 12h.01M12 12h.01M18 12h.01",
+    "grid" to "M5 5h5v5h-5zM14 5h5v5h-5zM5 14h5v5h-5zM14 14h5v5h-5z",
+    "list" to "M4 7h16M4 12h16M4 17h16",
+    "pitch" to "M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2zM4 12h16M9 3v3h6v-3M9 21v-3h6v3M12 9.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0 -5z",
+    "users" to "M9 11a3 3 0 1 0 0 -6a3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5.2a3 3 0 0 1 0 5.6M17 14.2c2.4.6 4 2.8 4 5.8",
+    "route" to "M5 18c0-4 4-4 7-6s3-6 7-6M15 6h4v4",
+    "swap" to "M7 4v14M7 18l-3-3M7 18l3-3M17 20V6M17 6l-3 3M17 6l3 3",
+    "trash" to "M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13",
     "gear" to "M19.4 15 a1.65 1.65 0 0 0 .33 1.82 l.06 .06 a2 2 0 1 1 -2.83 2.83 l-.06 -.06 a1.65 1.65 0 0 0 -1.82 -.33 " +
         "a1.65 1.65 0 0 0 -1 1.51 V21 a2 2 0 1 1 -4 0 v-.09 A1.65 1.65 0 0 0 9 19.4 a1.65 1.65 0 0 0 -1.82 .33 l-.06 .06 " +
         "a2 2 0 1 1 -2.83 -2.83 l.06 -.06 a1.65 1.65 0 0 0 .33 -1.82 a1.65 1.65 0 0 0 -1.51 -1 H3 a2 2 0 1 1 0 -4 h.09 " +
@@ -207,12 +237,12 @@ private val ICO = mapOf(
 
 @Composable
 fun Ico(name: String, size: Dp, color: Color, sw: Float = 1.7f) {
-    val path = remember(name) { PathParser().parsePathString(ICO[name]!!).toPath() }
+    val path = remember(name) { PathParser().parsePathString(ICO[name] ?: ICO["plus"]!!).toPath() }
     Canvas(Modifier.size(size)) {
         val sc = this.size.width / 24f
         withTransform({ scale(sc, sc, Offset.Zero) }) {
             if (name == "gear") drawCircle(color, 3f, Offset(12f, 12f), style = Stroke(sw))
-            if (name == "search") drawCircle(color, 6f, Offset(11f, 11f), style = Stroke(sw))
+            if (name == "search") drawCircle(color, 6.5f, Offset(11f, 11f), style = Stroke(sw))
             drawPath(path, color, style = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
     }
@@ -286,6 +316,10 @@ fun Crest(color: String, c2: String, logo: String, text: String, size: Dp = 44.d
 fun Modifier.glass(shape: Shape? = null): Modifier {
     val u = LocalU.current
     val sh = shape ?: u.shape
+    if (u.coral) {
+        val base = if (u.dark) this else this.shadow(10.dp, sh, ambientColor = Color(0x14000000), spotColor = Color(0x1A000000))
+        return base.clip(sh).background(u.sf)
+    }
     return when (u.s.surf) {
         "solid" -> this.clip(sh).background(u.sf).border(1.dp, u.glassEdge, sh)
         "outline" -> this.clip(sh).border(1.dp, u.outline, sh)
@@ -301,11 +335,12 @@ fun Modifier.glass(shape: Shape? = null): Modifier {
 @Composable
 fun Glass(
     modifier: Modifier = Modifier, radius: Dp? = null, pad: PaddingValues = PaddingValues(0.dp),
-    onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit,
+    onClick: (() -> Unit)? = null, border: Color? = null, content: @Composable ColumnScope.() -> Unit,
 ) {
     val u = LocalU.current
     val shape = RoundedCornerShape(radius ?: u.r)
-    val m = modifier.glass(shape).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+    val m = modifier.glass(shape).then(if (border != null) Modifier.border(2.dp, border, shape) else Modifier)
+        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     Column(m.padding(pad), content = content)
 }
 
@@ -384,10 +419,10 @@ fun Btn(text: String, kind: String = "p", side: Dp = 16.dp, bottom: Dp = 10.dp, 
     val inner = when (kind) {
         "s" -> m.glass(shape)
         "red" -> m.clip(shape).border(1.dp, u.red.copy(alpha = .5f), shape)
-        else -> m.clip(shape).background(u.acc)
+        else -> m.clip(shape).background(u.pri)
     }
     Box(inner.clickable(onClick = onClick).padding(16.dp), contentAlignment = Alignment.Center) {
-        Tx(text, 15 * u.fs, 800, when (kind) { "s" -> u.ink; "red" -> u.red; else -> u.on })
+        Tx(text, 15 * u.fs, 800, when (kind) { "s" -> u.ink; "red" -> u.red; else -> u.onPri })
     }
 }
 
@@ -397,8 +432,8 @@ fun SmallBtn(text: String, kind: String = "p", onClick: () -> Unit) {
     val u = LocalU.current
     val shape = RoundedCornerShape(minOf(u.r, 24.dp))
     val m = Modifier.padding(top = 10.dp)
-    Box((if (kind == "s") m.glass(shape) else m.clip(shape).background(u.acc)).clickable(onClick = onClick)
-        .padding(horizontal = 22.dp, vertical = 12.dp)) { Tx(text, 15 * u.fs, 800, if (kind == "s") u.ink else u.on) }
+    Box((if (kind == "s") m.glass(shape) else m.clip(shape).background(u.pri)).clickable(onClick = onClick)
+        .padding(horizontal = 22.dp, vertical = 12.dp)) { Tx(text, 15 * u.fs, 800, if (kind == "s") u.ink else u.onPri) }
 }
 
 /** Dashed outline button, like "Add club" in the mockups. */
@@ -460,11 +495,11 @@ fun HChips(items: List<Pair<String, String>>, cur: String?, onPick: (String) -> 
         items.forEach { (k, t) ->
             val on = k == cur
             Box(
-                Modifier.height(44.dp).clip(CircleShape).background(if (on) u.acc else h.chip)
+                Modifier.height(44.dp).clip(CircleShape).background(if (on) u.pri else h.chip)
                     .then(if (on) Modifier else Modifier.border(1.dp, h.chipEdge, CircleShape))
                     .clickable { onPick(k) }.padding(horizontal = 20.dp),
                 contentAlignment = Alignment.Center,
-            ) { Tx(t, 14 * u.fs, if (on) 800 else 700, if (on) u.on else h.fg, maxLines = 1) }
+            ) { Tx(t, 14 * u.fs, if (on) 800 else 700, if (on) u.onPri else h.fg, maxLines = 1) }
         }
     }
 }
@@ -474,11 +509,11 @@ fun HChips(items: List<Pair<String, String>>, cur: String?, onPick: (String) -> 
 fun Chip(t: String, on: Boolean, onClick: () -> Unit) {
     val u = LocalU.current
     Box(
-        Modifier.height(38.dp).clip(CircleShape).background(if (on) u.acc else Color.Transparent)
+        Modifier.height(38.dp).clip(CircleShape).background(if (on) u.pri else Color.Transparent)
             .then(if (on) Modifier else Modifier.border(1.dp, u.outline.copy(alpha = u.outline.alpha * .7f), CircleShape))
             .clickable(onClick = onClick).padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
-    ) { Tx(t, 13 * u.fs, if (on) 800 else 600, if (on) u.on else u.ink, maxLines = 1) }
+    ) { Tx(t, 13 * u.fs, if (on) 800 else 600, if (on) u.onPri else u.ink, maxLines = 1) }
 }
 
 @Composable
@@ -522,7 +557,7 @@ fun Modifier.field(focused: Boolean = false): Modifier {
 fun Toggle(on: Boolean, onClick: () -> Unit) {
     val u = LocalU.current
     val x by animateDpAsState(if (on) 23.dp else 3.dp, label = "knob")
-    Box(Modifier.size(48.dp, 28.dp).clip(CircleShape).background(if (on) u.acc else u.outline.copy(alpha = .35f)).clickable(onClick = onClick)) {
+    Box(Modifier.size(48.dp, 28.dp).clip(CircleShape).background(if (on) u.pri else u.outline.copy(alpha = .35f)).clickable(onClick = onClick)) {
         Box(Modifier.offset(x, 3.dp).size(22.dp).shadow(3.dp, CircleShape).background(Color.White, CircleShape))
     }
 }
@@ -658,7 +693,7 @@ fun ImageEditor(src: Bitmap, aspect: Float, onDone: (Bitmap) -> Unit, onCancel: 
             }
             Lbl("Zoom")
             Slider(zoom.coerceIn(.1f, 6f), { zoom = it }, valueRange = .1f..6f,
-                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = u.acc, inactiveTrackColor = u.ln))
+                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = u.pri, inactiveTrackColor = u.ln))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("Fit", false) { zoom = 1f; off = Offset.Zero }
                 Chip("Fill", false) { zoom = fill() / fit(); off = Offset.Zero }
@@ -762,6 +797,28 @@ fun CountryField(value: String, onChange: (String) -> Unit, modifier: Modifier =
         else COUNTRIES.map { it.first }.filter { it.startsWith(q, true) && !it.equals(q, true) }.take(4)
         if (hits.isNotEmpty()) FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             hits.forEach { n -> Chip("${flag(n)}$n", false) { onChange(n) } }
+        }
+    }
+}
+
+
+/** Segmented control: soft track with the selected option as a filled pill (black in Coral, accent in Glass). */
+@Composable
+fun SegRow(opts: List<Pair<String, String>>, cur: String, modifier: Modifier = Modifier, onPick: (String) -> Unit) {
+    val u = LocalU.current
+    val outer = if (u.coral) CircleShape else u.rs(12)
+    val inner = if (u.coral) CircleShape else u.rs(15)
+    Row(
+        modifier.fillMaxWidth().clip(outer).background(if (u.coral) u.track else u.fieldFill)
+            .then(if (u.coral) Modifier else Modifier.border(1.dp, u.glassEdge, outer)).padding(if (u.coral) 4.dp else 3.dp),
+    ) {
+        opts.forEach { (v, t) ->
+            val on = v == cur
+            Box(
+                Modifier.weight(1f).clip(inner).background(if (on) u.pri else Color.Transparent)
+                    .clickable { onPick(v) }.padding(horizontal = 3.dp, vertical = 11.dp),
+                contentAlignment = Alignment.Center,
+            ) { Tx(t, 13 * u.fs, if (on) 800 else 600, if (on) u.onPri else u.mu, maxLines = 1) }
         }
     }
 }

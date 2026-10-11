@@ -31,6 +31,10 @@ sealed interface Screen {
     data class FixturesS(val lid: String?) : Screen
     data object SettingsS : Screen
     data object CompareS : Screen
+    data object MenuS : Screen
+    data class SquadS(val cid: String) : Screen
+    data class LineupS(val cid: String) : Screen
+    data class FormP(val draft: Draft) : Screen
     data class FormL(val draft: Draft) : Screen
     data class FormC(val draft: Draft) : Screen
     data class FormF(val draft: Draft) : Screen
@@ -42,6 +46,8 @@ class AppVM(app: Application) : AndroidViewModel(app) {
     var leagues by mutableStateOf(d0.leagues); private set
     var clubs by mutableStateOf(d0.clubs); private set
     var fixtures by mutableStateOf(d0.fixtures); private set
+    var players by mutableStateOf(d0.players); private set
+    var lineups by mutableStateOf(d0.lineups); private set
     var pick by mutableStateOf(d0.pick); private set
     var tab by mutableStateOf("clubs"); private set
 
@@ -57,6 +63,13 @@ class AppVM(app: Application) : AndroidViewModel(app) {
     var tableView by mutableStateOf("standings")
     var cmpA by mutableStateOf("")
     var cmpB by mutableStateOf("")
+    var clubSort by mutableStateOf("az")          // Coral clubs list: az | pts | lg
+    var leagueTab by mutableStateOf("table")      // Coral league page tabs: table | form | stats
+    var fixTab by mutableStateOf("up")            // Coral fixtures tabs: up | res
+    var navOpen by mutableStateOf(false)          // speed-dial, arc, section sheet and drawer navigation
+    var lineupTactics by mutableStateOf(false)    // lineup page mode: false = lineup, true = tactics
+    var lineupSel by mutableStateOf("")           // selected token on the pitch: "p3" starter, "b2" bench
+    var arrowKind by mutableStateOf("run")
 
     var splashDone by mutableStateOf(false)
     var pending by mutableStateOf<PendingRestore?>(null)
@@ -64,7 +77,7 @@ class AppVM(app: Application) : AndroidViewModel(app) {
     var hasPrev by mutableStateOf(Store.hasPrev(app))
     var lastBackup by mutableStateOf(Store.lastBackup(app))
 
-    private fun snapshot() = Data(settings, leagues, clubs, fixtures, pick)
+    private fun snapshot() = Data(settings, leagues, clubs, fixtures, pick, players, lineups)
     private fun persist() = Store.save(getApplication(), snapshot())
     private fun uid() = UUID.randomUUID().toString().take(6)
 
@@ -81,9 +94,15 @@ class AppVM(app: Application) : AndroidViewModel(app) {
 
     fun shownClubs(): List<Club> {
         val q = query.trim()
-        return clubs.filter { c ->
+        val list = clubs.filter { c ->
             (clubFilter == "all" || c.lid == clubFilter) &&
                 (q.isEmpty() || listOf(c.name, c.short, c.nick, c.city, c.stadium, lg(c.lid)?.name ?: "").any { it.contains(q, true) })
+        }
+        return when (clubSort) {
+            "pts" -> list.sortedByDescending { pts(it) }
+            "lg" -> list.sortedWith(compareBy({ lg(it.lid)?.name ?: "" }, { it.name.lowercase() }))
+            "az" -> if (settings.ui == "coral") list.sortedBy { it.name.lowercase() } else list
+            else -> list
         }
     }
 
@@ -109,7 +128,10 @@ class AppVM(app: Application) : AndroidViewModel(app) {
         is Screen.FixturesS -> "Fixtures"
         Screen.SettingsS -> "Settings"
         Screen.CompareS -> "Compare"
-        is Screen.FormL, is Screen.FormC, is Screen.FormF -> "Edit"
+        Screen.MenuS -> "Menu"
+        is Screen.SquadS -> "Squad"
+        is Screen.LineupS -> "Lineup"
+        is Screen.FormL, is Screen.FormC, is Screen.FormF, is Screen.FormP -> "Edit"
     }
 
     // ---- settings
@@ -122,21 +144,24 @@ class AppVM(app: Application) : AndroidViewModel(app) {
     fun reset() = update { Settings() }
 
     fun loadSample() {
-        val b = seed(); leagues = b.leagues; clubs = b.clubs; fixtures = b.fixtures
+        val b = seed(); leagues = b.leagues; clubs = b.clubs; fixtures = b.fixtures; players = emptyList(); lineups = emptyList()
         persist()
     }
 
     fun clearAll() {
-        leagues = emptyList(); clubs = emptyList(); fixtures = emptyList(); pick = ""
+        leagues = emptyList(); clubs = emptyList(); fixtures = emptyList(); players = emptyList(); lineups = emptyList(); pick = ""
         clubFilter = "all"; statsLeague = "all"; stack.clear(); persist()
     }
 
     // ---- navigation (back stack)
-    fun selectTab(t: String) { tab = t; stack.clear(); searchOpen = false; query = "" }
+    fun selectTab(t: String) { tab = t; stack.clear(); searchOpen = false; query = ""; navOpen = false }
     fun toggleSearch() { searchOpen = !searchOpen; if (!searchOpen) query = "" }
     fun open(s: Screen) { if (stack.lastOrNull() != s) stack.add(s) }
     fun goBack() { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
-    fun openSettings() { stack.clear(); stack.add(Screen.SettingsS) }
+    fun openSettings() { navOpen = false; stack.clear(); stack.add(Screen.SettingsS) }
+    fun openMenu() { navOpen = false; stack.clear(); stack.add(Screen.MenuS) }
+    fun openSquad(cid: String) = open(Screen.SquadS(cid))
+    fun openLineup(cid: String, tactics: Boolean = false) { lineupTactics = tactics; lineupSel = ""; open(Screen.LineupS(cid)) }
     fun openClub(id: String) { pick = id; persist(); open(Screen.ClubS(id)) }
     fun openLeague(id: String) = open(Screen.LeagueS(id))
     fun openTable(id: String) = open(Screen.TableS(id))
@@ -206,6 +231,8 @@ class AppVM(app: Application) : AndroidViewModel(app) {
     fun deleteClub(id: String) {
         clubs = clubs.filter { it.id != id }
         fixtures = fixtures.filter { it.home != id && it.away != id }
+        players = players.filter { it.cid != id }
+        lineups = lineups.filter { it.cid != id }
         if (cmpA == id) cmpA = ""
         if (cmpB == id) cmpB = ""
         persist(); tab = "clubs"; stack.clear()
@@ -215,11 +242,43 @@ class AppVM(app: Application) : AndroidViewModel(app) {
         leagues = leagues.filter { it.id != id }.map {
             it.copy(promoTo = if (it.promoTo == id) "" else it.promoTo, relTo = if (it.relTo == id) "" else it.relTo)
         }
+        val gone = clubs.filter { it.lid == id }.map { it.id }.toSet()
         clubs = clubs.filter { it.lid != id }
         fixtures = fixtures.filter { it.lid != id }
+        players = players.filter { it.cid !in gone }
+        lineups = lineups.filter { it.cid !in gone }
         if (clubFilter == id) clubFilter = "all"
         if (statsLeague == id) statsLeague = "all"
         persist(); tab = "leagues"; stack.clear()
+    }
+
+    // ---- squad and lineups
+    fun playersOf(cid: String) = players.filter { it.cid == cid }
+        .sortedWith(compareBy({ listOf("GK", "DEF", "MID", "FWD").indexOf(it.pos) }, { it.num }, { it.name.lowercase() }))
+    fun lineupOf(cid: String): Lineup = lineups.find { it.cid == cid } ?: Lineup(cid)
+    fun editLineup(cid: String, f: (Lineup) -> Lineup) {
+        val next = f(lineupOf(cid))
+        lineups = if (lineups.any { it.cid == cid }) lineups.map { if (it.cid == cid) next else it } else lineups + next
+        persist()
+    }
+    fun resetLineup(cid: String) { lineups = lineups.filter { it.cid != cid }; lineupSel = ""; persist() }
+    fun newPlayer(cid: String) = open(Screen.FormP(Draft(null, mapOf("cid" to cid, "pos" to "MID", "num" to "", "name" to "", "img" to ""))))
+    fun editPlayer(id: String) { players.find { it.id == id }?.let { open(Screen.FormP(Draft(id, it.toMap()))) } }
+    fun savePlayer(d: Draft): String? {
+        if (d["name"].isBlank()) return "Add a name first"
+        val id = d.eid ?: uid()
+        val p = Player(id, d["cid"], d["name"].trim(), d["num"].i(), d["pos"].ifBlank { "MID" }, d["img"])
+        players = if (d.eid != null) players.map { if (it.id == id) p else it } else players + p
+        persist(); goBack()
+        return null
+    }
+    fun deletePlayer(id: String) {
+        players = players.filter { it.id != id }
+        lineups = lineups.map { l ->
+            fun clean(s: LineSlot) = if (s.pid == id) s.copy(pid = "") else s
+            l.copy(xi = l.xi.map(::clean), bench = l.bench.map(::clean))
+        }
+        persist(); goBack()
     }
 
     // ---- backup and restore
@@ -274,6 +333,7 @@ class AppVM(app: Application) : AndroidViewModel(app) {
 
     private fun applyData(d: Data) {
         settings = d.s; leagues = d.leagues; clubs = d.clubs; fixtures = d.fixtures; pick = d.pick
+        players = d.players; lineups = d.lineups
         clubFilter = "all"; statsLeague = "all"; cmpA = ""; cmpB = ""; stack.clear()
         persist()
     }

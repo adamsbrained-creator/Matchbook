@@ -47,12 +47,12 @@ private fun rememberFont(res: String, fallback: FontFamily): FontFamily {
     }
 }
 
-/** Manrope as one (variable) font file used for every weight. */
+/** A variable font file (res/font/<name>.ttf) used for every weight, or the system font when it is missing. */
 @Composable
-private fun rememberManrope(): FontFamily {
+private fun rememberVarFont(name: String): FontFamily {
     val ctx = LocalContext.current
-    return remember {
-        val id = ctx.resources.getIdentifier("manrope", "font", ctx.packageName)
+    return remember(name) {
+        val id = ctx.resources.getIdentifier(name, "font", ctx.packageName)
         if (id == 0) FontFamily.Default
         else FontFamily(
             Font(id, FontWeight.Normal), Font(id, FontWeight.Medium), Font(id, FontWeight.SemiBold),
@@ -66,6 +66,9 @@ fun pageHex(vm: AppVM, sc: Screen?): String {
         is Screen.ClubS -> vm.cl(sc.id)?.color
         is Screen.LeagueS -> vm.lg(sc.id)?.color
         is Screen.TableS -> vm.lg(sc.id)?.color
+        is Screen.SquadS -> vm.cl(sc.cid)?.color
+        is Screen.LineupS -> vm.cl(sc.cid)?.color
+        is Screen.FormP -> vm.cl(sc.draft["cid"])?.color
         is Screen.FormC -> sc.draft["color"]
         is Screen.FormL -> sc.draft["color"]
         else -> null
@@ -78,11 +81,12 @@ fun MatchbookApp(vm: AppVM) {
     val s = vm.settings
     val ctx = LocalContext.current
     val dark = when (s.theme) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
-    val manrope = rememberManrope()
+    val manrope = rememberVarFont("manrope")
+    val outfit = rememberVarFont("outfit")
     val anton = rememberFont("anton", FontFamily(Typeface.create("sans-serif-condensed", Typeface.BOLD)))
     val inter = rememberFont("inter", FontFamily.Default)
     val nunito = rememberFont("nunito", FontFamily.SansSerif)
-    val u = remember(s, dark, manrope, anton, inter, nunito) { U(s, dark, manrope, anton, inter, nunito) }
+    val u = remember(s, dark, manrope, anton, inter, nunito, outfit) { U(s, dark, manrope, anton, inter, nunito, outfit) }
     val cfg = LocalConfiguration.current
     val land = cfg.orientation == Configuration.ORIENTATION_LANDSCAPE && cfg.screenWidthDp >= 640
 
@@ -97,10 +101,10 @@ fun MatchbookApp(vm: AppVM) {
             isAppearanceLightNavigationBars = if (showSplash) false else !dark
         }
     }
-    BackHandler(enabled = vm.screen != null) { vm.goBack() }
+    BackHandler(enabled = vm.screen != null || vm.navOpen) { if (vm.navOpen) vm.navOpen = false else vm.goBack() }
     LaunchedEffect(vm.msg) { vm.msg?.let { Toast.makeText(ctx, it, Toast.LENGTH_LONG).show(); vm.msg = null } }
 
-    CompositionLocalProvider(LocalU provides u) {
+    CompositionLocalProvider(LocalU provides u, LocalVm provides vm) {
         MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = u.acc) else lightColorScheme(primary = u.acc)) {
             Box(Modifier.fillMaxSize().background(u.bg), contentAlignment = Alignment.TopCenter) {
                 Box(
@@ -117,11 +121,13 @@ fun MatchbookApp(vm: AppVM) {
 
 @Composable
 fun Portrait(vm: AppVM) {
+    val u = LocalU.current
     val sc = vm.screen
-    val form = sc is Screen.FormL || sc is Screen.FormC || sc is Screen.FormF
+    val form = sc is Screen.FormL || sc is Screen.FormC || sc is Screen.FormF || sc is Screen.FormP
+    val rail = !u.coral && u.s.navs == "rail" && !form
     Box(Modifier.fillMaxSize()) {
-        SectionPane(vm, Modifier.fillMaxSize())
-        if (!form) Box(Modifier.align(Alignment.BottomCenter)) { NavBar(vm, false) }
+        CompositionLocalProvider(LocalNavPad provides (if (rail) 64.dp else 0.dp)) { SectionPane(vm, Modifier.fillMaxSize()) }
+        if (!form) { if (u.coral) CoralOverlay(vm) else NavHost(vm) }
     }
 }
 
@@ -157,13 +163,27 @@ fun Page(
     val stops = remember(u, c) { u.glow(c) }
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val hh = u.glowHeight(big) + top
+    val navPad = LocalNavPad.current
+    if (u.coral) {
+        // Coral: flat page, no colour glow
+        Box(modifier.background(u.bg)) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                CompositionLocalProvider(LocalHdr provides hdr) {
+                    Column(Modifier.fillMaxWidth().padding(top = top, end = navPad), content = content)
+                }
+                Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+            }
+            overlay()
+        }
+        return
+    }
     Box(modifier.background(u.pageBg(c))) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Box(Modifier.fillMaxWidth()) {
                 Box(Modifier.fillMaxWidth().height(hh)
                     .background(Brush.verticalGradient(0f to stops[0], .30f to stops[1], .62f to stops[2], 1f to stops[3])))
                 CompositionLocalProvider(LocalHdr provides hdr) {
-                    Column(Modifier.fillMaxWidth().padding(top = top), content = content)
+                    Column(Modifier.fillMaxWidth().padding(top = top, end = navPad), content = content)
                 }
             }
             Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
@@ -175,13 +195,14 @@ fun Page(
 @Composable
 fun SectionPane(vm: AppVM, modifier: Modifier) {
     val sc = vm.screen
-    val big = sc is Screen.ClubS || sc is Screen.LeagueS
+    val big = (sc is Screen.ClubS || sc is Screen.LeagueS)
     key(vm.tab, sc) {
         Page(pageHex(vm, sc), big, modifier, overlay = {
             when (sc) {
                 is Screen.FormL -> Box(Modifier.align(Alignment.BottomCenter)) { SaveBar("Save league", { vm.goBack() }) { if (vm.saveLeague(sc.draft)) null else "Add a name first" } }
                 is Screen.FormC -> Box(Modifier.align(Alignment.BottomCenter)) { SaveBar("Save club", { vm.goBack() }) { if (vm.saveClub(sc.draft)) null else "Add a name and a league" } }
                 is Screen.FormF -> Box(Modifier.align(Alignment.BottomCenter)) { SaveBar("Save fixture", { vm.goBack() }) { vm.saveFixture(sc.draft) } }
+                is Screen.FormP -> Box(Modifier.align(Alignment.BottomCenter)) { SaveBar("Save player", { vm.goBack() }) { vm.savePlayer(sc.draft) } }
                 else -> {}
             }
         }) { if (sc == null) ListV(vm) else Detail(vm, sc) }
@@ -213,71 +234,10 @@ fun Detail(vm: AppVM, sc: Screen) {
         is Screen.FormL -> LeagueForm(vm, sc.draft)
         is Screen.FormC -> ClubForm(vm, sc.draft)
         is Screen.FormF -> FixtureForm(vm, sc.draft)
-    }
-}
-
-// =============================================================== floating glass navigation
-@Composable
-fun NavItem(icon: String, on: Boolean, ring: Boolean, label: String?, onClick: () -> Unit) {
-    val u = LocalU.current
-    val glow = if (on) Modifier.shadow(10.dp, CircleShape, ambientColor = u.acc.copy(alpha = .55f), spotColor = u.acc.copy(alpha = .55f)) else Modifier
-    Column(
-        Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        Box(
-            Modifier.size(if (label != null) 46.dp else 52.dp).then(glow).clip(CircleShape)
-                .background(if (on) u.acc else Color.Transparent)
-                .then(if (ring && !on) Modifier.border(1.dp, u.outline, CircleShape) else Modifier),
-            contentAlignment = Alignment.Center,
-        ) { Ico(icon, 22.dp, if (on) u.on else u.ink, 1.9f) }
-        if (label != null) Tx(label, 10f, 700, if (on) u.ink else u.mu, maxLines = 1)
-    }
-}
-
-@Composable
-fun NavBar(vm: AppVM, land: Boolean) {
-    val u = LocalU.current
-    val labels = u.s.lbl == "on"
-    val items = listOf(
-        Triple("clubs", "shield", "Clubs"), Triple("leagues", "trophy", "Leagues"), Triple("add", "plus", "Add"),
-        Triple("stats", "bars", "Stats"), Triple("settings", "gear", "Settings"),
-    )
-    val inSettings = vm.screen is Screen.SettingsS
-    fun isOn(k: String) = if (k == "settings") inSettings else (vm.tab == k && !inSettings)
-    fun go(k: String) { if (k == "settings") vm.openSettings() else vm.selectTab(k) }
-    val dock = u.s.navs == "dock" && !land
-    val barShape = when {
-        dock -> RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-        labels -> RoundedCornerShape(34.dp)
-        else -> RoundedCornerShape(36.dp)
-    }
-    val bar = Modifier
-        .shadow(16.dp, barShape, ambientColor = Color.Black.copy(alpha = .35f), spotColor = Color.Black.copy(alpha = .35f))
-        .clip(barShape).background(u.navFill)
-        .border(1.dp, Brush.verticalGradient(listOf(u.glassTop, u.glassEdge)), barShape)
-
-    if (land) {
-        Box(
-            Modifier.fillMaxHeight().windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)).padding(start = 12.dp, top = 12.dp, bottom = 12.dp),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Column(bar.padding(8.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                items.forEach { (k, ic, lb) -> NavItem(ic, isOn(k), k == "add", if (labels) lb else null) { go(k) } }
-            }
-        }
-    } else if (dock) {
-        Row(
-            bar.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
-        ) { items.forEach { (k, ic, lb) -> NavItem(ic, isOn(k), k == "add", if (labels) lb else null) { go(k) } } }
-    } else {
-        Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
-            Row(
-                bar.fillMaxWidth().padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
-            ) { items.forEach { (k, ic, lb) -> NavItem(ic, isOn(k), k == "add", if (labels) lb else null) { go(k) } } }
-        }
+        is Screen.FormP -> PlayerForm(vm, sc.draft)
+        is Screen.SquadS -> SquadPage(vm, sc.cid)
+        is Screen.LineupS -> LineupPage(vm, sc.cid)
+        Screen.MenuS -> MenuPage(vm)
     }
 }
 
@@ -286,34 +246,64 @@ fun NavBar(vm: AppVM, land: Boolean) {
 fun CircleBtn(icon: String, onClick: () -> Unit, on: Boolean = false) {
     val h = LocalHdr.current
     val u = LocalU.current
+    val lift = if (u.coral && !u.dark) Modifier.shadow(8.dp, CircleShape, ambientColor = Color(0x14000000), spotColor = Color(0x1F000000)) else Modifier
     Box(
-        Modifier.size(48.dp).clip(CircleShape).background(if (on) u.acc else h.chip).border(1.dp, h.chipEdge, CircleShape).clickable(onClick = onClick),
+        Modifier.size(48.dp).then(lift).clip(CircleShape).background(if (on) u.pri else h.chip)
+            .border(1.dp, h.chipEdge, CircleShape).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { Ico(icon, 22.dp, if (on) u.on else h.fg, 1.9f) }
+    ) { Ico(icon, 22.dp, if (on) u.onPri else h.fg, 1.9f) }
 }
 
+/**
+ * Page title block. [lead] marks a top-level page (Clubs, Leagues, ...): there Coral adds its menu bar and the
+ * Glass navigation variants add their header pieces (drawer button, tabs, extra buttons).
+ */
 @Composable
-fun Tp(title: String, sub: String, trailing: (@Composable () -> Unit)? = null) {
+fun Tp(title: String, sub: String, trailing: (@Composable () -> Unit)? = null, lead: Boolean = false) {
     val u = LocalU.current
     val h = LocalHdr.current
+    val vm = LocalVm.current
+    if (u.coral) {
+        if (lead) CoralBar(left = { CircleBtn("menu", { vm.openMenu() }) }, right = trailing)
+        Row(
+            Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = if (lead) 24.dp else 18.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Hd(title, 38f, h.fg, maxLines = 1)
+            Tx(sub, 14 * u.fs, 500, u.mu, Modifier.padding(bottom = 7.dp), maxLines = 1)
+        }
+        return
+    }
+    val nv = u.s.navs
     Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
+            if (lead && nv == "drawer") {
+                CircleBtn("menu", { vm.navOpen = true })
+                Spacer(Modifier.height(12.dp))
+            }
             Tx(sub, 13 * u.fs, 700, h.fg.copy(alpha = .92f))
             Spacer(Modifier.height(2.dp))
             Hd(if (u.cond) title.uppercase() else title, if (u.cond) 38f else 34f, h.fg, maxLines = 1)
         }
         trailing?.invoke()
+        if (lead && nv == "tabs") { Spacer(Modifier.width(8.dp)); CircleBtn("gear", { vm.openSettings() }, navOn(vm, "settings")) }
+        if (lead && nv == "dots") { Spacer(Modifier.width(8.dp)); CircleBtn("plus", { vm.selectTab("add") }, navOn(vm, "add")) }
     }
+    if (lead && nv == "tabs") HeaderTabs(vm)
 }
 
 @Composable
 fun SearchBtn(vm: AppVM) = CircleBtn("search", { vm.toggleSearch() }, vm.searchOpen)
 
-/** Back pill on the left, optional round action (for example edit) on the right. */
+/** Back pill on the left, optional round action (for example edit) on the right. Coral shows a round back button. */
 @Composable
 fun TopRow(label: String, onBack: () -> Unit, trailing: (@Composable () -> Unit)? = null) {
     val u = LocalU.current
     val h = LocalHdr.current
+    if (u.coral) {
+        CoralBar(left = { CircleBtn("back", onBack) }, right = trailing)
+        return
+    }
     Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Row(
             Modifier.height(44.dp).clip(CircleShape).background(h.chip).border(1.dp, h.chipEdge, CircleShape).clickable(onClick = onBack)
@@ -336,14 +326,17 @@ fun Ctr(title: String, sub: String, size: Float, pill: String? = null, crest: @C
         crest()
         Spacer(Modifier.height(14.dp))
         Hd(if (u.cond) title.uppercase() else title, if (u.cond) size + 8 else size, h.fg, align = TextAlign.Center)
-        if (sub.isNotBlank()) Tx(sub, 13 * u.fs, 600, h.fg.copy(alpha = .9f), Modifier.padding(top = 6.dp), align = TextAlign.Center)
-        if (pill != null) Row(
-            Modifier.padding(top = 14.dp).clip(CircleShape).background(h.chip).border(1.dp, h.chipEdge, CircleShape)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Box(Modifier.size(8.dp).clip(CircleShape).background(h.fg))
-            Tx(pill, 13 * u.fs, 800, h.fg)
+        if (sub.isNotBlank()) Tx(sub, 13 * u.fs, 600, if (u.coral) u.mu else h.fg.copy(alpha = .9f), Modifier.padding(top = 6.dp), align = TextAlign.Center)
+        if (pill != null) {
+            val lift = if (u.coral && !u.dark) Modifier.shadow(8.dp, CircleShape, ambientColor = Color(0x14000000), spotColor = Color(0x1F000000)) else Modifier
+            Row(
+                Modifier.padding(top = 14.dp).then(lift).clip(CircleShape).background(h.chip).border(1.dp, h.chipEdge, CircleShape)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(if (u.coral) u.acc else h.fg))
+                Tx(pill, 13 * u.fs, 800, h.fg)
+            }
         }
     }
 }
@@ -396,7 +389,7 @@ fun ClubCard(vm: AppVM, c: Club, style: String, modifier: Modifier = Modifier) {
                 Tx(vm.nm(c), 16 * u.fs, 800, maxLines = 1)
                 Tx(league, 12 * u.fs, 500, u.mu, maxLines = 1)
             }
-            Hd("${vm.pts(c)}", 26f, w = 600)
+            if (u.coral) Tx("${vm.pts(c)} pts", 14 * u.fs, 500, u.mu) else Hd("${vm.pts(c)}", 26f, w = 600)
         }
         "comp" -> Row(base.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Crest(c.color, c.c2, c.logo, ab(c.name, c.short), 34.dp, backdrop = c.logoBg)
@@ -585,9 +578,10 @@ fun ListV(vm: AppVM) {
     when (vm.tab) {
         "clubs" -> {
             val leagueWord = if (vm.leagues.size == 1) "league" else "leagues"
-            Tp("Clubs", "${vm.clubs.size} clubs · ${vm.leagues.size} $leagueWord", { SearchBtn(vm) })
+            Tp("Clubs", if (u.coral) "${vm.clubs.size} clubs" else "${vm.clubs.size} clubs · ${vm.leagues.size} $leagueWord", { SearchBtn(vm) }, lead = true)
             if (vm.searchOpen) SearchField(vm.query, "Search clubs", { vm.query = it }) { vm.toggleSearch() }
-            HChips(listOf("all" to "All") + vm.leagues.map { it.id to it.name }, vm.clubFilter) { vm.clubFilter = it }
+            if (u.coral) CoralClubFilter(vm)
+            else HChips(listOf("all" to "All") + vm.leagues.map { it.id to it.name }, vm.clubFilter) { vm.clubFilter = it }
             val shown = vm.shownClubs()
             Column(Modifier.bd(top = 16.dp)) {
                 if (shown.isEmpty()) EmptyBlock(if (vm.query.isNotBlank()) "No clubs match \"${vm.query.trim()}\"." else "No clubs here yet.") {
@@ -605,7 +599,7 @@ fun ListV(vm: AppVM) {
             }
         }
         "leagues" -> {
-            Tp("Leagues", "Your competitions", { SearchBtn(vm) })
+            Tp("Leagues", if (u.coral) "${vm.leagues.size} leagues" else "Your competitions", { SearchBtn(vm) }, lead = true)
             if (vm.searchOpen) SearchField(vm.query, "Search leagues", { vm.query = it }) { vm.toggleSearch() }
             val shown = vm.shownLeagues()
             val style = u.s.lg
@@ -630,7 +624,7 @@ fun ListV(vm: AppVM) {
             }
         }
         "add" -> {
-            Tp("Add", "Create something new")
+            Tp("Add", "Create something new", lead = true)
             Column(Modifier.bd(top = 24.dp)) {
                 @Composable
                 fun opt(icon: String, t: String, sub: String, go: () -> Unit) =
@@ -651,7 +645,7 @@ fun ListV(vm: AppVM) {
             }
         }
         else -> {
-            Tp("Stats", "Season overview")
+            Tp("Stats", "Season overview", lead = true)
             HChips(listOf("all" to "All") + vm.leagues.map { it.id to it.name }, vm.statsLeague) { vm.statsLeague = it }
             val cs = vm.clubs.filter { vm.statsLeague == "all" || it.lid == vm.statsLeague }
             val g = cs.sumOf { it.gf }

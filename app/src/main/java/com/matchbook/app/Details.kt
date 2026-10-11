@@ -17,6 +17,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 
 // =============================================================== club
 private class Stat(val key: String, val label: String, val v: (Club) -> Int)
@@ -55,7 +56,12 @@ fun ClubDetail(vm: AppVM, id: String) {
     val colMain = hex(c.color)
     val next = vm.nextFixture(club = c.id)
 
-    TopRow(vm.backLabel, { vm.goBack() }) { CircleBtn("edit", { vm.editClub(c.id) }) }
+    TopRow(vm.backLabel, { vm.goBack() }) {
+        if (u.coral) MoreMenu(listOf(
+            "Edit club" to { vm.editClub(c.id) }, "Squad" to { vm.openSquad(c.id) }, "Lineup" to { vm.openLineup(c.id) },
+            "Tactics" to { vm.openLineup(c.id, true) }, "Fixtures" to { vm.openFixtures(c.lid) }, "Compare" to { vm.openCompare(c.id) },
+        )) else CircleBtn("edit", { vm.editClub(c.id) })
+    }
     Ctr(c.name, sub, 26f, "Rank ${ordinal(vm.rank(c))}") {
         Crest(c.color, c.c2, c.logo, ab(c.name, c.short), 88.dp, true, backdrop = c.logoBg)
     }
@@ -110,6 +116,7 @@ fun ClubDetail(vm: AppVM, id: String) {
                 }
             }
         }
+        if ("k_squad" in B) SquadCard(vm, c)
         if ("k_tiles" in B) TileGrid(listOf("Goals for" to "${c.gf}", "Against" to "${c.ga}", "Titles" to "${c.titles}"), if (u.s.tc == "2") 2 else 3)
         if ("k_tiles2" in B) TileGrid(listOf("Points" to "${vm.pts(c)}", "Played" to "${c.played()}", "Goal diff" to "${c.gf - c.ga}"), if (u.s.tc == "2") 2 else 3)
         if ("k_neighbours" in B) NeighboursCard(vm, c)
@@ -402,12 +409,16 @@ fun LeagueDetail(vm: AppVM, id: String) {
     val banner = rememberBitmap(l.banner)
     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 20.dp)) {
         if (banner != null) Image(banner, null, Modifier.fillMaxWidth().height(96.dp).padding(bottom = 14.dp).clip(RoundedCornerShape(minOf(u.r, 24.dp))), contentScale = ContentScale.Crop)
-        if ("g_table" in B) StandingsCard(vm, l, 5)
-        if ("g_rules" in B) TileGrid(listOf("Points per win" to "${l.pw}", "Points per draw" to "${l.pd}", "Promotion spots" to "${l.promo}", "Relegation spots" to "${l.rel}"), 2)
-        if ("g_fixture" in B) vm.nextFixture(lid = id)?.let { NextFixtureCard(vm, it) }
-        if ("g_links" in B) LinksCard(vm, l)
-        if ("g_leaders" in B) LeaderTiles(vm, l)
-        Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        if (u.coral) SegRow(listOf("table" to "Table", "form" to "Form", "stats" to "Stats"), vm.leagueTab, Modifier.padding(bottom = 14.dp)) { vm.leagueTab = it }
+        val tab = if (u.coral) vm.leagueTab else "table"
+        if (tab == "form") LeagueFormCard(vm, l)
+        if (tab == "stats") LeagueStatsTab(vm, l)
+        if (tab == "table" && "g_table" in B) StandingsCard(vm, l, 5)
+        if (tab == "table" && "g_rules" in B) TileGrid(listOf("Points per win" to "${l.pw}", "Points per draw" to "${l.pd}", "Promotion spots" to "${l.promo}", "Relegation spots" to "${l.rel}"), 2)
+        if (tab == "table" && "g_fixture" in B) vm.nextFixture(lid = id)?.let { NextFixtureCard(vm, it) }
+        if (tab == "table" && "g_links" in B) LinksCard(vm, l)
+        if (tab == "table" && "g_leaders" in B) LeaderTiles(vm, l)
+        if (tab == "table") Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             GlassBtn("Full table", "bars", Modifier.weight(1f)) { vm.openTable(id) }
             GlassBtn("Fixtures", "cal", Modifier.weight(1f)) { vm.openFixtures(id) }
         }
@@ -469,13 +480,13 @@ fun ComparePage(vm: AppVM) {
 
 // =============================================================== fixtures
 @Composable
-fun FixtureRow(vm: AppVM, f: Fixture, showLeague: Boolean) {
+fun FixtureRow(vm: AppVM, f: Fixture, showLeague: Boolean, highlight: Boolean = false) {
     val u = LocalU.current
     val h = vm.cl(f.home)
     val a = vm.cl(f.away)
     Glass(
         Modifier.fillMaxWidth().padding(bottom = 12.dp), radius = minOf(u.r, 26.dp),
-        pad = PaddingValues(horizontal = 14.dp, vertical = 14.dp), onClick = { vm.editFixture(f.id) },
+        pad = PaddingValues(horizontal = 14.dp, vertical = 14.dp), onClick = { vm.editFixture(f.id) }, border = if (highlight) u.acc else null,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             FixCrest(h)
@@ -501,14 +512,81 @@ fun FixturesPage(vm: AppVM, lid: String?) {
     val upcoming = all.filter { it.at >= now }
     val past = all.filter { it.at < now }.sortedByDescending { it.at }
     Column(Modifier.bd(top = 18.dp)) {
+        if (u.coral) SegRow(listOf("up" to "Upcoming", "res" to "Results"), vm.fixTab, Modifier.padding(bottom = 14.dp)) { vm.fixTab = it }
+        val showUp = !u.coral || vm.fixTab == "up"
+        val showPast = !u.coral || vm.fixTab == "res"
         if (all.isEmpty()) EmptyBlock("No fixtures yet.") { SmallBtn("Add a fixture") { vm.newFixture(lid) } }
-        if (upcoming.isNotEmpty()) {
-            Tx("Upcoming", 15 * u.fs, 800, modifier = Modifier.padding(start = 6.dp, bottom = 10.dp))
-            upcoming.forEach { FixtureRow(vm, it, lid == null) }
+        if (showUp && upcoming.isNotEmpty()) {
+            if (!u.coral) Tx("Upcoming", 15 * u.fs, 800, modifier = Modifier.padding(start = 6.dp, bottom = 10.dp))
+            upcoming.forEachIndexed { i, f -> FixtureRow(vm, f, lid == null, highlight = u.coral && i == 0) }
         }
-        if (past.isNotEmpty()) {
-            Tx("Past", 15 * u.fs, 800, modifier = Modifier.padding(start = 6.dp, top = 10.dp, bottom = 10.dp))
+        if (showPast && past.isNotEmpty()) {
+            if (!u.coral) Tx("Past", 15 * u.fs, 800, modifier = Modifier.padding(start = 6.dp, top = 10.dp, bottom = 10.dp))
             past.forEach { FixtureRow(vm, it, lid == null) }
         }
     }
+}
+
+@Composable
+fun SquadCard(vm: AppVM, c: Club) {
+    val u = LocalU.current
+    val n = vm.playersOf(c.id).size
+    val lu = vm.lineupOf(c.id)
+    val rows = listOf(
+        Triple("users", "Squad", "$n players") to { vm.openSquad(c.id) },
+        Triple("pitch", "Lineup", lu.fm) to { vm.openLineup(c.id) },
+        Triple("route", "Tactics", "${lu.arrows.size} arrows") to { vm.openLineup(c.id, true) },
+    )
+    Glass(Modifier.fillMaxWidth().padding(bottom = 14.dp), pad = PaddingValues(horizontal = 18.dp, vertical = 2.dp)) {
+        rows.forEachIndexed { i, (info, go) ->
+            KvRow(i == rows.lastIndex, Modifier.clickable { go() }) {
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Box(Modifier.size(40.dp).clip(CircleShape).background(u.fieldFill), contentAlignment = Alignment.Center) { Ico(info.first, 20.dp, u.ink, 1.9f) }
+                    Tx(info.second, 15 * u.fs, 700)
+                }
+                Tx(info.third, 13 * u.fs, 600, u.mu)
+                Spacer(Modifier.width(8.dp))
+                Ico("chev", 16.dp, u.mu, 2f)
+            }
+        }
+    }
+}
+
+/** Win / draw / loss bar for every club (Coral league page, Form tab). */
+@Composable
+fun LeagueFormCard(vm: AppVM, l: League) {
+    val u = LocalU.current
+    val cs = vm.table(l.id)
+    val win = Color(0xFF34D399)
+    val draw = Color(0xFFFBBF24)
+    Glass(Modifier.fillMaxWidth().padding(bottom = 14.dp), pad = PaddingValues(horizontal = 18.dp, vertical = 16.dp)) {
+        Hd("Form", 20f)
+        if (cs.isEmpty()) Tx("No clubs in this league yet.", 14 * u.fs, 500, u.mu, Modifier.padding(vertical = 18.dp))
+        cs.forEachIndexed { i, c ->
+            KvRow(i == cs.lastIndex, Modifier.clickable { vm.openClub(c.id) }) {
+                Column(Modifier.weight(1f)) {
+                    Tx(vm.nm(c), 14 * u.fs, 700, maxLines = 1)
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(u.track)) {
+                        if (c.w > 0) Box(Modifier.weight(c.w.toFloat()).fillMaxHeight().background(win))
+                        if (c.d > 0) Box(Modifier.weight(c.d.toFloat()).fillMaxHeight().background(draw))
+                        if (c.l > 0) Box(Modifier.weight(c.l.toFloat()).fillMaxHeight().background(u.red))
+                    }
+                }
+                Spacer(Modifier.width(14.dp))
+                Tx("${c.w}-${c.d}-${c.l}", 13 * u.fs, 700, u.mu)
+            }
+        }
+    }
+}
+
+/** Totals and leaders (Coral league page, Stats tab). */
+@Composable
+fun LeagueStatsTab(vm: AppVM, l: League) {
+    val cs = vm.clubs.filter { it.lid == l.id }
+    val matches = (cs.sumOf { it.played() } / 2f).roundToInt()
+    val goals = cs.sumOf { it.gf }
+    TileGrid(listOf("Clubs" to "${cs.size}", "Matches played" to "$matches", "Goals scored" to "$goals",
+        "Goals per match" to (if (matches > 0) "%.2f".format(goals.toFloat() / matches) else "0")), 2)
+    LeaderTiles(vm, l)
 }
