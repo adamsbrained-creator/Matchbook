@@ -43,7 +43,10 @@ val NAV_CHOICES = listOf(
     "arc" to "Arc menu", "dots" to "Swipe dots", "drawer" to "Side drawer", "islands" to "Two islands",
 )
 
-fun navOn(vm: AppVM, k: String) = if (k == "settings") vm.screen is Screen.SettingsS else (vm.tab == k && vm.screen !is Screen.SettingsS)
+fun navOn(vm: AppVM, k: String): Boolean {
+    val inSettings = vm.screen is Screen.SettingsS || vm.screen is Screen.SettingsSubS
+    return if (k == "settings") inSettings else (vm.tab == k && !inSettings)
+}
 
 fun navGo(vm: AppVM, k: String) {
     vm.navOpen = false

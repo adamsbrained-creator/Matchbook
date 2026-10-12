@@ -230,6 +230,7 @@ fun Detail(vm: AppVM, sc: Screen) {
         is Screen.TableS -> TablePage(vm, sc.id)
         is Screen.FixturesS -> FixturesPage(vm, sc.lid)
         Screen.SettingsS -> SettingsScreen(vm)
+        is Screen.SettingsSubS -> SettingsSub(vm, sc.page)
         Screen.CompareS -> ComparePage(vm)
         is Screen.FormL -> LeagueForm(vm, sc.draft)
         is Screen.FormC -> ClubForm(vm, sc.draft)

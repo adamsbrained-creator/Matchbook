@@ -12,6 +12,23 @@ Open in Android Studio, let Gradle sync, press Run. GitHub Actions builds the AP
 - Pitch app icon, refreshed icon set, Pitch launch screen
 - Data format 3 (squads, lineups, tactics); 2.0 data and backups still load
 
+## Online catalog (added after 2.5)
+"Find online" in the player editor and in the lineup slot editor (Online.kt). Needs the INTERNET permission (added to the manifest).
+- TheSportsDB (free test key "3"): names, positions, cut-outs / renders / photos
+- Wikimedia Commons: real photos labelled by year (free licences), newest first
+- Fantasy Premier League (public, unofficial): official PL render, this-season stats, last 5 matches, past seasons. Premier League only
+Pick a picture and it goes through the normal crop dialog and ImageStore, so it is saved locally and travels in backups.
+Stats are shown, not stored, so the data format is unchanged.
+
+## Lineup renders
+A player with a render on the lineup pitch or bench is drawn as the bare render with a name label (no circle); transparent PNG
+cut-outs look best. Without a render (or if the file can't be read) the numbered circle is used.
+
+## Settings layout
+Settings is a short hub (summary card + grouped rows: LOOK, PAGES, DATA, About), modelled on Paperback's settings. Each row opens its own
+page (Screen.SettingsSubS in AppVM, pages in SettingsScreen.kt: look, style, text, nav, pages, blocks, cols, fields, backup, data, about).
+To add a setting: put the control on the matching page and, if it should show as the row's value, update the value text in SettingsScreen().
+
 ## Upgrading
 Same app id (com.matchbook.app): 2.5 installs over 2.0/1.x and keeps your data. Settings and data are migrated
 automatically (Store.settingsFromJson / Store.fromJson). Make a backup first (Settings > Backup and restore).

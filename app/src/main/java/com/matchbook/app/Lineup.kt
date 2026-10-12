@@ -14,6 +14,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -151,8 +152,13 @@ private fun PlayerToken(
     var start by remember { mutableStateOf(Offset.Zero) }
     val label = slot.name.ifBlank { role }
     val tint = if (gk) Color(0xFFF46C4E) else Color(0xFF1D1F24)
+    // With a render the token is just the player (no circle), like a team-sheet graphic. No render, or one that can't be read: numbered circle.
+    val loaded = rememberBitmapOrFail(slot.img)
+    val bmp = loaded as? ImageBitmap
+    val render = slot.img.isNotBlank() && loaded != false
     Column(
-        Modifier.width(84.dp)
+        (if (render && !translate) Modifier.offset(y = (-15).dp) else Modifier)
+            .width(84.dp)
             .then(if (translate) Modifier.graphicsLayer { translationX = acc.x; translationY = acc.y } else Modifier)
             .onGloballyPositioned { rects[key] = it.boundsInRoot() }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onSelect)
@@ -168,26 +174,48 @@ private fun PlayerToken(
             ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box {
-            Box(
-                Modifier.size(54.dp).clip(CircleShape).background(tint)
-                    .border(if (selected) 3.dp else 2.dp, if (selected) u.acc else Color.White, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                val bmp = rememberBitmap(slot.img)
-                if (bmp != null) Image(bmp, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alignment = Alignment.TopCenter)
-                else Tx(slot.num, 18f, 800, Color.White, maxLines = 1)
+        if (render) {
+            Box(Modifier.width(84.dp).height(94.dp)) {
+                Box(
+                    Modifier.align(Alignment.TopCenter).fillMaxWidth().height(84.dp)
+                        .then(if (selected) Modifier.clip(RoundedCornerShape(18.dp)).background(u.acc.copy(alpha = .30f)) else Modifier),
+                ) {
+                    if (bmp != null) Image(bmp, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit, alignment = Alignment.BottomCenter)
+                }
+                TokenLabel(label, selected, Modifier.align(Alignment.BottomCenter))
+                if (duty.isNotEmpty()) DutyBadge(duty, Modifier.align(Alignment.TopEnd).padding(end = 4.dp))
             }
-            if (duty.isNotEmpty()) Box(
-                Modifier.align(Alignment.TopEnd).size(20.dp).clip(CircleShape).background(PressColor).border(1.5.dp, Color.White, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) { Tx(duty, 10f, 800, Color.White) }
-        }
-        Spacer(Modifier.height(4.dp))
-        Box(Modifier.clip(CircleShape).background(Color.White).padding(horizontal = 8.dp, vertical = 2.dp)) {
-            Tx(label, 11f, 700, Color(0xFF1B1B1B), maxLines = 1, modifier = Modifier.widthIn(max = 70.dp))
+        } else {
+            Box {
+                Box(
+                    Modifier.size(54.dp).clip(CircleShape).background(tint)
+                        .border(if (selected) 3.dp else 2.dp, if (selected) u.acc else Color.White, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) { Tx(slot.num, 18f, 800, Color.White, maxLines = 1) }
+                if (duty.isNotEmpty()) DutyBadge(duty, Modifier.align(Alignment.TopEnd))
+            }
+            Spacer(Modifier.height(4.dp))
+            TokenLabel(label, false, Modifier)
         }
     }
+}
+
+@Composable
+private fun TokenLabel(label: String, ring: Boolean, modifier: Modifier) {
+    val u = LocalU.current
+    Box(
+        modifier.clip(CircleShape).background(Color.White)
+            .then(if (ring) Modifier.border(2.dp, u.acc, CircleShape) else Modifier)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+    ) { Tx(label, 11f, 700, Color(0xFF1B1B1B), maxLines = 1, modifier = Modifier.widthIn(max = 70.dp)) }
+}
+
+@Composable
+private fun DutyBadge(duty: String, modifier: Modifier) {
+    Box(
+        modifier.size(20.dp).clip(CircleShape).background(PressColor).border(1.5.dp, Color.White, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) { Tx(duty, 10f, 800, Color.White) }
 }
 
 // =============================================================== the page
@@ -351,6 +379,11 @@ fun LineupPage(vm: AppVM, cid: String) {
                     if (squad.isNotEmpty()) DropSelect(
                         "Pick from squad", "", squad.map { it.id to (if (it.num > 0) "${it.num}  ${it.name}" else it.name) },
                         { pid -> squad.find { it.id == pid }?.let { p -> edit { cur -> withSlot(cur, sel, fromPlayer(p)) } } },
+                    )
+                    OnlineLookup(
+                        slot.name,
+                        { n, _ -> edit { cur -> withSlot(cur, sel, slotOf(cur, sel).copy(name = n, pid = "")) } },
+                        { d["img"] = it },
                     )
                     Upload("Render", d, "img")
                     val others = (l.xi.indices.map { "p$it" } + l.bench.indices.map { "b$it" }).filter { it != sel }

@@ -30,6 +30,7 @@ sealed interface Screen {
     data class TableS(val id: String) : Screen
     data class FixturesS(val lid: String?) : Screen
     data object SettingsS : Screen
+    data class SettingsSubS(val page: String) : Screen
     data object CompareS : Screen
     data object MenuS : Screen
     data class SquadS(val cid: String) : Screen
@@ -49,7 +50,7 @@ class AppVM(app: Application) : AndroidViewModel(app) {
     var players by mutableStateOf(d0.players); private set
     var lineups by mutableStateOf(d0.lineups); private set
     var pick by mutableStateOf(d0.pick); private set
-    var tab by mutableStateOf("clubs"); private set
+    var tab by mutableStateOf("leagues"); private set
 
     private val stack = mutableStateListOf<Screen>()
     val screen: Screen? get() = stack.lastOrNull()
@@ -127,6 +128,7 @@ class AppVM(app: Application) : AndroidViewModel(app) {
         is Screen.TableS -> "Table"
         is Screen.FixturesS -> "Fixtures"
         Screen.SettingsS -> "Settings"
+        is Screen.SettingsSubS -> settingsTitle(s.page)
         Screen.CompareS -> "Compare"
         Screen.MenuS -> "Menu"
         is Screen.SquadS -> "Squad"
@@ -159,6 +161,7 @@ class AppVM(app: Application) : AndroidViewModel(app) {
     fun open(s: Screen) { if (stack.lastOrNull() != s) stack.add(s) }
     fun goBack() { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
     fun openSettings() { navOpen = false; stack.clear(); stack.add(Screen.SettingsS) }
+    fun openSettingsPage(page: String) = open(Screen.SettingsSubS(page))
     fun openMenu() { navOpen = false; stack.clear(); stack.add(Screen.MenuS) }
     fun openSquad(cid: String) = open(Screen.SquadS(cid))
     fun openLineup(cid: String, tactics: Boolean = false) { lineupTactics = tactics; lineupSel = ""; open(Screen.LineupS(cid)) }

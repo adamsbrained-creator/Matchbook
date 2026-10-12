@@ -233,6 +233,7 @@ fun PlayerForm(vm: AppVM, d: Draft) {
                 DropSelect("Position", POS_NAMES.firstOrNull { it.first == d["pos"] }?.second ?: "", POS_NAMES, { d["pos"] = it }, Modifier.weight(1.4f))
             }
             Upload("Render (picture or cut-out)", d, "img")
+            OnlineLookup(d["name"], { n, pos -> d["name"] = n; if (pos.isNotBlank()) d["pos"] = pos }, { d["img"] = it })
         }
         if (ed) DeleteBtn("Delete player", 0.dp) { vm.deletePlayer(d.eid!!) }
         Spacer(Modifier.height(100.dp))

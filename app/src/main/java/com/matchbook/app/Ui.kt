@@ -200,6 +200,12 @@ fun Hd(t: String, size: Float, c: Color = Color.Unspecified, modifier: Modifier 
 // Icon set (24 x 24 grid, drawn as round-capped strokes). New in 2.5: pitch, users, route, menu, grid, list, more, chevrons, swap, trash.
 private val ICO = mapOf(
     "shield" to "M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z",
+    "brush" to "M12 3C7 3 3 7 3 12s4 9 9 9c.9 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1-.3-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H17c2.8 0 5-2.2 5-5 0-4.4-4.5-8-10-8zM7.5 11h.01M10 7.5h.01M14.5 7.5h.01M17 11h.01",
+    "shape" to "M4 4h10v10H4zM20 16a4 4 0 1 1 -8 0 4 4 0 0 1 8 0z",
+    "type" to "M5 7V4h14v3M12 4v16M9 20h6",
+    "compass" to "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM15.5 8.5l-2 5-5 2 2-5z",
+    "db" to "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6",
+    "info" to "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01",
     "trophy" to "M8 4h8v5a4 4 0 0 1-8 0zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8",
     "plus" to "M12 5v14M5 12h14",
     "bars" to "M5 20v-5M10 20V8M15 20V4M20 20v-9",
@@ -272,6 +278,16 @@ fun rememberBitmap(path: String): ImageBitmap? {
     if (path.isBlank()) return null
     val st = produceState<ImageBitmap?>(null, path) {
         value = withContext(Dispatchers.IO) { runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull() }
+    }
+    return st.value
+}
+
+/** Like rememberBitmap, but tells "still loading" (null) apart from "can't be read" (false). */
+@Composable
+fun rememberBitmapOrFail(path: String): Any? {
+    val st = produceState<Any?>(if (path.isBlank()) false else null, path) {
+        value = if (path.isBlank()) false
+        else withContext(Dispatchers.IO) { runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull() ?: false }
     }
     return st.value
 }
