@@ -1,0 +1,124 @@
+name: Build signed APK
+
+# Works with any of these in the repo:
+#   1. project files in the repo root
+#   2. the project inside a folder (for example Matchbook-2.6/)
+#   3. one or more project .zip files in the root (the newest by version number is built)
+# Run it by hand (Actions -> Build signed APK -> Run workflow) and, if you like, type a zip name.
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      zip:
+        description: "Zip to build (blank = newest in the repo root)"
+        required: false
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # only used to attach the APK to a Release on v* tags
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find the project
+        env:
+          WANT_ZIP: ${{ github.event.inputs.zip }}
+        run: |
+          ROOT=""; NAME=""
+          if [ -n "$WANT_ZIP" ] && [ -f "$WANT_ZIP" ]; then
+            ZIP="$WANT_ZIP"
+          elif [ -f settings.gradle.kts ] || [ -f settings.gradle ]; then
+            ROOT=.; NAME=$(basename "$GITHUB_REPOSITORY")
+          else
+            SUB=$(find . -maxdepth 3 \( -name settings.gradle.kts -o -name settings.gradle \) \
+                  -not -path './_project/*' -not -path './.git/*' | head -1)
+            if [ -n "$SUB" ]; then
+              ROOT=$(dirname "$SUB"); NAME=$(basename "$(cd "$ROOT" && pwd)")
+            else
+              ZIP=$(ls -1 *.zip 2>/dev/null | sort -V | tail -1 || true)
+            fi
+          fi
+          if [ -z "$ROOT" ]; then
+            if [ -z "${ZIP:-}" ]; then
+              echo "::error::No Gradle project found: no settings.gradle(.kts) in the repo and no .zip in the root."
+              ls -la; exit 1
+            fi
+            echo "Unpacking $ZIP"
+            rm -rf _project; mkdir -p _project
+            unzip -q -o "$ZIP" -d _project
+            FOUND=$(find _project \( -name settings.gradle.kts -o -name settings.gradle \) | head -1)
+            if [ -z "$FOUND" ]; then
+              echo "::error::$ZIP has no settings.gradle(.kts) inside."; exit 1
+            fi
+            ROOT=$(dirname "$FOUND"); NAME=$(basename "$ZIP" .zip)
+          fi
+          # the app module: the folder with an Android application build file
+          APPDIR=$(grep -l "com.android.application" "$ROOT"/*/build.gradle.kts "$ROOT"/*/build.gradle 2>/dev/null | head -1 | xargs -r dirname)
+          APPMOD=$(basename "${APPDIR:-$ROOT/app}")
+          VER=$(grep -hm1 'versionName' "${APPDIR:-$ROOT/app}"/build.gradle* 2>/dev/null | sed -E 's/.*["'\'']([^"'\'']+)["'\''].*/\1/' || true)
+          echo "Project root: $ROOT | module: $APPMOD | name: $NAME | version: ${VER:-?}"
+          { echo "ROOT=$ROOT"; echo "NAME=$NAME"; echo "APPMOD=$APPMOD"; echo "VER=${VER:-}"; } >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # the runner image already has the Android SDK; just make sure licences are accepted
+      - name: Accept Android SDK licences
+        run: yes | sdkmanager --licenses > /dev/null 2>&1 || true
+
+      # a project's own gradlew wins; otherwise a pinned Gradle (AGP 8.7 needs 8.9+)
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Build release APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          if [ -x ./gradlew ]; then ./gradlew --no-daemon :$APPMOD:assembleRelease --stacktrace
+          else gradle --no-daemon :$APPMOD:assembleRelease --stacktrace; fi
+
+      # A project that signs itself (like Eon) keeps its key. Anything unsigned is
+      # aligned and signed with signing.jks from this repo, so every build installs
+      # over the previous one.
+      - name: Sign and name the APK
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          APK=$(find "$ROOT" -path '*/build/outputs/apk/release/*.apk' | head -1)
+          if [ -z "$APK" ]; then echo "::error::No release APK was produced."; exit 1; fi
+          mkdir -p dist
+          OUT="dist/$NAME${VER:+-$VER}-${{ github.run_number }}.apk"
+          if "$BT/apksigner" verify "$APK" >/dev/null 2>&1; then
+            echo "Already signed by the project, keeping its signature."
+            cp "$APK" "$OUT"
+          else
+            "$BT/zipalign" -f -p 4 "$APK" aligned.apk
+            "$BT/apksigner" sign --ks signing.jks --ks-key-alias apk \
+              --ks-pass pass:apksigning --key-pass pass:apksigning --out "$OUT" aligned.apk
+            "$BT/apksigner" verify --print-certs "$OUT"
+          fi
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAME }}-apk
+          path: dist/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach APK to release (v* tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
